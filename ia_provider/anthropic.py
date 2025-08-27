@@ -58,7 +58,7 @@ class AnthropicProvider(AnthropicBatchMixin, BaseProvider):
         
         # Anthropic requiert max_tokens
         if 'max_tokens' not in params:
-            params['max_tokens'] = 1000
+            params['max_tokens'] = 64000
         
         # Gestion de stop_sequences vs stop
         if 'stop' in params:
