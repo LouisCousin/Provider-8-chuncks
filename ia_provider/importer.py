@@ -149,3 +149,53 @@ def analyser_document(
     if filename.endswith(".pdf"):
         return analyser_pdf(fichier)
     return "", None
+
+
+def decouper_document_en_chunks(
+    document_structure: Dict[str, List[Dict[str, Any]]],
+    seuil_blocs: int = 200,
+) -> List[Dict[str, List[Dict[str, Any]]]]:
+    """Découpe une structure de document en plusieurs chunks si elle dépasse un seuil.
+
+    Args:
+        document_structure: Structure complète du document analysé.
+        seuil_blocs: Nombre maximum de blocs autorisés par chunk.
+
+    Returns:
+        Liste de structures de document découpées. Si le document
+        ne dépasse pas ``seuil_blocs``, la liste contiendra une seule
+        structure correspondant au document original.
+    """
+
+    corps = document_structure.get("body", [])
+
+    # Si le document est sous le seuil, aucune découpe nécessaire
+    if len(corps) <= seuil_blocs:
+        return [document_structure]
+
+    chunks: List[Dict[str, List[Dict[str, Any]]]] = []
+    chunk_courant: List[Dict[str, Any]] = []
+
+    for bloc in corps:
+        # On tente de couper sur les titres de niveau 1 pour conserver le contexte
+        if bloc.get("type") == "heading_1" and chunk_courant:
+            nouveau_chunk_structure = {
+                "header": document_structure.get("header", []),
+                "body": chunk_courant,
+                "footer": document_structure.get("footer", []),
+            }
+            chunks.append(nouveau_chunk_structure)
+            chunk_courant = []
+
+        chunk_courant.append(bloc)
+
+    # Ajouter le dernier chunk restant
+    if chunk_courant:
+        dernier_chunk_structure = {
+            "header": document_structure.get("header", []),
+            "body": chunk_courant,
+            "footer": document_structure.get("footer", []),
+        }
+        chunks.append(dernier_chunk_structure)
+
+    return chunks

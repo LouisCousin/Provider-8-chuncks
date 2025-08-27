@@ -600,24 +600,65 @@ if generate_button:
                 st.code(response, language=None)
             else:
                 try:
-                    with st.spinner(f"Soumission du lot vers {selected_model}..."):
+                    requests_pour_le_lot: List[BatchRequest] = []
+
+                    if isinstance(document_structure_pour_export, dict):
+                        chunks = importer.decouper_document_en_chunks(
+                            document_structure_pour_export
+                        )
+                        if len(chunks) > 1:
+                            st.info(
+                                f"Document volumineux détecté. Il sera traité en {len(chunks)} parties."
+                            )
+
+                        custom_id_base = f"req_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                        for i, chunk in enumerate(chunks):
+                            json_str = json.dumps(chunk, ensure_ascii=False, indent=2)
+                            prompt_chunk = (
+                                "INSTRUCTION : Tu es un assistant expert en traduction. Tu dois traduire le contenu textuel trouvé à l'intérieur d'une structure de données JSON.\n"
+                                f"TÂCHE DE TRADUCTION : \"{user_instruction}\"\n"
+                                "RÈGLE ABSOLUE : Tu dois impérativement conserver la structure JSON d'origine à l'identique (toutes les clés et leur hiérarchie : 'header', 'body', 'type', 'runs', 'style', etc.).\n"
+                                "RÈGLE ABSOLUE : Ne traduis UNIQUEMENT que les valeurs textuelles associées à la clé 'text'. Toutes les autres valeurs (comme 'font_name', 'is_bold', etc.) doivent rester inchangées.\n"
+                                "RÈGLE ABSOLUE : Ta réponse finale ne doit contenir QUE le JSON traduit, sans aucun texte, commentaire, ou explication avant ou après.\n\n"
+                                f"JSON À TRAITER :\n{json_str}"
+                            )
+
+                            request = BatchRequest(
+                                custom_id=f"{custom_id_base}_chunk_{i+1:03d}",
+                                body={
+                                    "model": selected_model,
+                                    "messages": [{"role": "user", "content": prompt_chunk}],
+                                    **params,
+                                },
+                                prompt_text=f"Chunk {i+1}/{len(chunks)}",
+                            )
+                            requests_pour_le_lot.append(request)
+                    else:
                         request_body = {
                             "model": selected_model,
                             "messages": [{"role": "user", "content": prompt}],
-                            **params
+                            **params,
                         }
-
-                        batch_request = BatchRequest(
-                            custom_id=f"req_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-                            body=request_body,
-                            prompt_text=prompt_text
+                        requests_pour_le_lot.append(
+                            BatchRequest(
+                                custom_id=f"req_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+                                body=request_body,
+                                prompt_text=prompt_text,
+                            )
                         )
 
-                        batch_id = provider_instance.submit_batch(requests=[batch_request])
+                    with st.spinner(
+                        f"Soumission du lot de {len(requests_pour_le_lot)} chunk(s) vers {selected_model}..."
+                    ):
+                        batch_id = provider_instance.submit_batch(
+                            requests=requests_pour_le_lot
+                        )
 
                     st.success("✅ Tâche soumise avec succès en traitement par lot.")
                     st.info(f"**ID du lot (Batch ID) :** `{batch_id}`")
-                    st.caption("Vous pouvez suivre son état dans l'onglet 'Suivi des lots'.")
+                    st.caption(
+                        "Vous pouvez suivre son état dans l'onglet 'Suivi des lots'."
+                    )
                 except APIError as e:
                     st.error(f"❌ Erreur lors de la soumission du lot : {e}")
                 except Exception as e:
@@ -715,9 +756,6 @@ with st.expander("Suivi des lots (Batches)"):
                     elif status == 'COMPLETED':
                         results_export = batch_manager.get_results(batch['id'])
                         if results_export:
-                            # On prend la réponse du premier (et unique) résultat du lot
-                            response_text = results_export[0].clean_response
-
                             styles_interface = {
                                 "response": {
                                     "font_name": reponse_font,
@@ -728,20 +766,38 @@ with st.expander("Suivi des lots (Batches)"):
                                 }
                             }
 
-                            # Nouvelle logique : Tenter de parser le JSON en priorité
-                            try:
-                                # Essayer de charger la réponse comme une structure JSON
-                                reponse_structuree = json.loads(response_text)
-                                # Si ça réussit, générer le DOCX structuré
-                                buffer = exporter.generer_export_docx(
-                                    reponse_structuree, styles_interface
+                            results_export.sort(key=lambda r: r.custom_id)
+                            chunks_traduits: List[Dict[str, Any]] = []
+                            succes_global = True
+                            for res in results_export:
+                                try:
+                                    chunks_traduits.append(json.loads(res.clean_response))
+                                except (json.JSONDecodeError, TypeError):
+                                    succes_global = False
+                                    st.error(
+                                        f"Le chunk {res.custom_id} n'a pas pu être parsé."
+                                    )
+                                    break
+
+                            if succes_global:
+                                structure_finale = exporter.fusionner_chunks_traduits(
+                                    chunks_traduits
                                 )
-                                st.success("Le document traduit et formaté est prêt.")
-                            except (json.JSONDecodeError, TypeError):
-                                # Si ce n'est pas un JSON valide, on se rabat sur le mode texte brut
-                                st.warning("La réponse n'était pas une structure valide, export en mode texte.")
+                                buffer = exporter.generer_export_docx(
+                                    structure_finale, styles_interface
+                                )
+                                st.success(
+                                    "Document final réassemblé et prêt."
+                                )
+                            else:
+                                st.error(
+                                    "Échec du réassemblage. Export du texte brut disponible."
+                                )
+                                texte_brut = "\n".join(
+                                    res.clean_response for res in results_export
+                                )
                                 buffer = exporter.generer_export_docx_markdown(
-                                    response_text, styles_interface
+                                    texte_brut, styles_interface
                                 )
 
                             st.download_button(

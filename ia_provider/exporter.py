@@ -20,6 +20,31 @@ from bs4.element import NavigableString, Tag
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 
+def fusionner_chunks_traduits(chunks_structures: List[Dict]) -> Dict[str, List[Dict[str, Any]]]:
+    """Fusionne plusieurs structures de document traduites en une seule.
+
+    Args:
+        chunks_structures: Liste de structures issues de la traduction des chunks.
+
+    Returns:
+        Une structure unique combinant toutes les parties du document.
+    """
+
+    if not chunks_structures:
+        return {"header": [], "body": [], "footer": []}
+
+    document_final: Dict[str, List[Dict[str, Any]]] = {
+        "header": chunks_structures[0].get("header", []),
+        "body": [],
+        "footer": chunks_structures[0].get("footer", []),
+    }
+
+    for chunk in chunks_structures:
+        document_final["body"].extend(chunk.get("body", []))
+
+    return document_final
+
+
 class MarkdownToDocxConverter:
     """Convertit du texte Markdown en éléments DOCX."""
 
