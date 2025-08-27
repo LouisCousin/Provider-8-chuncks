@@ -177,7 +177,31 @@ def decouper_document_en_chunks(
     chunk_courant: List[Dict[str, Any]] = []
 
     for bloc in corps:
-        # On tente de couper sur les titres de niveau 1 pour conserver le contexte
+        # RÈGLE 1 : Si le chunk courant atteint le seuil, on le coupe de force.
+        if len(chunk_courant) >= seuil_blocs:
+            # RÈGLE 3 : Avant de couper, on vérifie s'il y a un titre orphelin.
+            if chunk_courant and chunk_courant[-1].get("type", "").startswith("heading"):
+                titre_orphelin = chunk_courant.pop()
+                nouveau_chunk_structure = {
+                    "header": document_structure.get("header", []),
+                    "body": chunk_courant,
+                    "footer": document_structure.get("footer", []),
+                }
+                chunks.append(nouveau_chunk_structure)
+
+                # Le nouveau chunk commence avec le titre qui était orphelin
+                chunk_courant = [titre_orphelin, bloc]
+                continue
+            else:
+                nouveau_chunk_structure = {
+                    "header": document_structure.get("header", []),
+                    "body": chunk_courant,
+                    "footer": document_structure.get("footer", []),
+                }
+                chunks.append(nouveau_chunk_structure)
+                chunk_courant = []
+
+        # Découpage sémantique sur les titres de chapitre
         if bloc.get("type") == "heading_1" and chunk_courant:
             nouveau_chunk_structure = {
                 "header": document_structure.get("header", []),
