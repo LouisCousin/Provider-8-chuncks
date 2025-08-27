@@ -767,6 +767,16 @@ with st.expander("Suivi des lots (Batches)"):
                             }
 
                             results_export.sort(key=lambda r: r.custom_id)
+
+                            # Validation de la séquence des chunks
+                            for i, res in enumerate(results_export):
+                                expected_suffix = f"_chunk_{i+1:03d}"
+                                if not res.custom_id.endswith(expected_suffix):
+                                    st.warning(
+                                        f"Avertissement : Séquence de chunks potentiellement désordonnée. "
+                                        f"Attendu: se terminant par '{expected_suffix}', Obtenu: '{res.custom_id}'"
+                                    )
+
                             chunks_traduits: List[Dict[str, Any]] = []
                             succes_global = True
                             for res in results_export:
@@ -783,12 +793,26 @@ with st.expander("Suivi des lots (Batches)"):
                                 structure_finale = exporter.fusionner_chunks_traduits(
                                     chunks_traduits
                                 )
-                                buffer = exporter.generer_export_docx(
-                                    structure_finale, styles_interface
-                                )
-                                st.success(
-                                    "Document final réassemblé et prêt."
-                                )
+
+                                # Vérification de la cohérence avant de générer le fichier
+                                if not structure_finale.get("body"):
+                                    st.error(
+                                        "Erreur critique : Le document final réassemblé est vide. Le fichier DOCX ne sera pas généré."
+                                    )
+                                else:
+                                    buffer = exporter.generer_export_docx(
+                                        structure_finale, styles_interface
+                                    )
+                                    st.success(
+                                        "Document final réassemblé et prêt."
+                                    )
+                                    st.download_button(
+                                        "⬇️ Export DOCX",
+                                        data=buffer.getvalue(),
+                                        file_name=f"batch_{batch['id']}.docx",
+                                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                        key=f"download_{batch['id']}",
+                                    )
                             else:
                                 st.error(
                                     "Échec du réassemblage. Export du texte brut disponible."
@@ -799,14 +823,13 @@ with st.expander("Suivi des lots (Batches)"):
                                 buffer = exporter.generer_export_docx_markdown(
                                     texte_brut, styles_interface
                                 )
-
-                            st.download_button(
-                                "⬇️ Export DOCX",
-                                data=buffer.getvalue(),
-                                file_name=f"batch_{batch['id']}.docx",
-                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                                key=f"download_{batch['id']}",
-                            )
+                                st.download_button(
+                                    "⬇️ Export DOCX",
+                                    data=buffer.getvalue(),
+                                    file_name=f"batch_{batch['id']}.docx",
+                                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                    key=f"download_{batch['id']}",
+                                )
 
                 if st.session_state[state_key]:
                     with st.spinner(f"Récupération des résultats pour {batch['id']}..."):
