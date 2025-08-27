@@ -147,9 +147,13 @@ class OpenAIBatchMixin:
         """
         if not hasattr(self, 'client') or not self.client:
             raise APIError("Le client OpenAI n'est pas initialisé.")
-        
+
         if not requests:
             raise ValueError("La liste de requêtes ne peut pas être vide")
+
+        self.logger.info(
+            f"Soumission d'un batch OpenAI avec {len(requests)} requête(s)"
+        )
 
         # 1. Conversion en JSONL
         jsonl_lines = []
@@ -175,17 +179,23 @@ class OpenAIBatchMixin:
                 "body": prepared_body
             }
             jsonl_lines.append(json.dumps(batch_line))
-        
+        if self.log_full_content:
+            try:
+                pretty = json.dumps([json.loads(l) for l in jsonl_lines], indent=2, ensure_ascii=False)
+                self.logger.debug(f"Contenu JSON du batch envoyé:\n{pretty}")
+            except Exception:
+                self.logger.debug(f"Contenu brut du batch envoyé: {jsonl_lines}")
+
         jsonl_content = "\n".join(jsonl_lines)
         file_obj = io.BytesIO(jsonl_content.encode('utf-8'))
-        
+
         # 2. Upload du fichier
         try:
             uploaded_file = self.client.files.create(
                 file=file_obj,
                 purpose="batch"
             )
-            print(f"✅ Fichier batch uploadé: {uploaded_file.id}")
+            self.logger.info(f"Fichier batch uploadé: {uploaded_file.id}")
         except Exception as e:
             raise APIError(f"Échec de l'upload du fichier batch: {e}")
         
@@ -197,7 +207,7 @@ class OpenAIBatchMixin:
                 completion_window="24h",
                 metadata=metadata or {}
             )
-            print(f"✅ Batch créé avec succès: {batch_job.id}")
+            self.logger.info(f"Batch créé avec succès: {batch_job.id}")
             _save_batch_to_local_history(batch_job.id, "openai", requests)
             return batch_job.id
         except Exception as e:
@@ -231,9 +241,13 @@ class AnthropicBatchMixin:
         """
         if not hasattr(self, 'client') or not self.client:
             raise APIError("Le client Anthropic n'est pas initialisé.")
-        
+
         if not requests:
             raise ValueError("La liste de requêtes ne peut pas être vide")
+
+        self.logger.info(
+            f"Soumission d'un batch Anthropic avec {len(requests)} requête(s)"
+        )
 
         # Convertir les BatchRequest au format Anthropic
         batch_requests = []
@@ -254,6 +268,17 @@ class AnthropicBatchMixin:
                 }
             }
             batch_requests.append(anthropic_request)
+
+        if self.log_full_content:
+            try:
+                pretty = json.dumps(batch_requests, indent=2, ensure_ascii=False)
+                self.logger.debug(
+                    f"Contenu JSON du batch envoyé:\n{pretty}"
+                )
+            except Exception:
+                self.logger.debug(
+                    f"Contenu brut du batch envoyé: {batch_requests}"
+                )
         
         try:
             # Créer le batch via l'API Anthropic
@@ -261,7 +286,7 @@ class AnthropicBatchMixin:
                 requests=batch_requests
             )
 
-            print(f"✅ Batch Anthropic créé avec succès: {batch.id}")
+            self.logger.info(f"Batch Anthropic créé avec succès: {batch.id}")
             _save_batch_to_local_history(batch.id, "anthropic", requests)
             return batch.id
 

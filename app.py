@@ -13,6 +13,7 @@ Version simplifiée avec support pour:
 import streamlit as st
 import os
 import json
+import logging
 from datetime import datetime
 from typing import Optional, List, Dict, Any, Union
 from dataclasses import asdict
@@ -40,6 +41,19 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# Configuration du logger (exécutée une seule fois)
+if 'logger_configured' not in st.session_state:
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        handlers=[
+            logging.FileHandler("app.log", mode='a', encoding='utf-8'),
+            logging.StreamHandler()
+        ]
+    )
+    st.session_state['logger_configured'] = True
+    logging.info("Logger configuré.")
 
 # CSS personnalisé
 st.markdown("""
@@ -178,6 +192,12 @@ MODEL_MAX_TOKENS = {
 
 with st.sidebar:
     st.title("⚙️ Configuration")
+
+    st.subheader("🛠️ Options de débogage")
+    debug_mode_enabled = st.checkbox(
+        "Activer la journalisation détaillée (JSON)",
+        help="Cochez cette case pour voir le contenu complet des requêtes API dans les logs."
+    )
     
     # Sélection du modèle
     st.subheader("🤖 Modèle")
@@ -505,7 +525,9 @@ if generate_button:
     else:
         try:
             # Obtenir le provider
-            provider_instance = manager.get_provider(selected_model, api_key)
+            provider_instance = manager.get_provider(
+                selected_model, api_key, log_full_content=debug_mode_enabled
+            )
 
             # Préparer les paramètres selon le modèle
             if selected_model.startswith("gpt-5"):

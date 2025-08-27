@@ -8,6 +8,7 @@ et des batches.
 from typing import List, Dict, Any
 from .core import BaseProvider, APIError
 from .batch import AnthropicBatchMixin, BatchRequest
+import json
 
 # Import de la bibliothèque Anthropic
 try:
@@ -23,17 +24,18 @@ except ImportError:
 
 class AnthropicProvider(AnthropicBatchMixin, BaseProvider):
     """Provider pour le modèle Anthropic claude-sonnet-4 avec support des batches"""
-    
-    def __init__(self, model_name: str, api_key: str):
+
+    def __init__(self, model_name: str, api_key: str, log_full_content: bool = False):
         """
         Initialise le client Anthropic.
-        
+
         Args:
             model_name: Nom du modèle Claude (claude-sonnet-4)
             api_key: Clé API Anthropic
+            log_full_content: Active la journalisation détaillée du contenu JSON
         """
         # Claude 4 (Sonnet 4) requiert le nom de modèle exact : claude-sonnet-4-20250514
-        super().__init__(model_name, api_key)
+        super().__init__(model_name, api_key, log_full_content=log_full_content)
         
         if anthropic is None:
             raise ImportError("Installez anthropic: pip install anthropic")
@@ -94,9 +96,23 @@ class AnthropicProvider(AnthropicBatchMixin, BaseProvider):
             raise ValueError("Le prompt ne peut pas être vide")
         
         params = self._preparer_parametres_anthropic(**kwargs)
-        
+
         messages = [{"role": "user", "content": prompt}]
-        
+
+        self.logger.info(
+            f"Appel API Anthropic (modèle: {self.model_name}) avec params: {params}"
+        )
+        if self.log_full_content:
+            try:
+                messages_json = json.dumps(messages, indent=2, ensure_ascii=False)
+                self.logger.debug(
+                    f"Contenu JSON envoyé à l'API:\n{messages_json}"
+                )
+            except Exception:
+                self.logger.debug(
+                    f"Contenu brut (non-JSON) envoyé à l'API: {messages}"
+                )
+
         try:
             response = self.client.messages.create(
                 model=self.model_name,
@@ -129,7 +145,21 @@ class AnthropicProvider(AnthropicBatchMixin, BaseProvider):
                 raise ValueError("Les rôles doivent être 'user' ou 'assistant'")
         
         params = self._preparer_parametres_anthropic(**kwargs)
-        
+
+        self.logger.info(
+            f"Appel API Anthropic (modèle: {self.model_name}) avec params: {params}"
+        )
+        if self.log_full_content:
+            try:
+                messages_json = json.dumps(messages, indent=2, ensure_ascii=False)
+                self.logger.debug(
+                    f"Contenu JSON envoyé à l'API:\n{messages_json}"
+                )
+            except Exception:
+                self.logger.debug(
+                    f"Contenu brut (non-JSON) envoyé à l'API: {messages}"
+                )
+
         try:
             response = self.client.messages.create(
                 model=self.model_name,

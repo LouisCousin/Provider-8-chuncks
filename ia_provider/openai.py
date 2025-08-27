@@ -8,6 +8,7 @@ et support des batches.
 from typing import List, Dict, Any
 from .core import BaseProvider, APIError
 from .batch import OpenAIBatchMixin, BatchRequest
+import json
 
 # Import de la bibliothèque OpenAI
 try:
@@ -23,16 +24,17 @@ except ImportError:
 
 class OpenAIProvider(OpenAIBatchMixin, BaseProvider):
     """Provider pour le modèle OpenAI gpt-4.1 avec support des batches"""
-    
-    def __init__(self, model_name: str, api_key: str):
+
+    def __init__(self, model_name: str, api_key: str, log_full_content: bool = False):
         """
         Initialise le client OpenAI.
-        
+
         Args:
             model_name: Nom du modèle OpenAI (gpt-4.1, gpt-4.1-mini, gpt-4.1-nano)
             api_key: Clé API OpenAI
+            log_full_content: Active la journalisation détaillée du contenu JSON
         """
-        super().__init__(model_name, api_key)
+        super().__init__(model_name, api_key, log_full_content=log_full_content)
         
         if openai is None:
             raise ImportError("Installez openai: pip install openai")
@@ -93,7 +95,21 @@ class OpenAIProvider(OpenAIBatchMixin, BaseProvider):
             params['max_completion_tokens'] = params.pop('max_tokens')
         
         messages = [{"role": "user", "content": prompt}]
-        
+
+        self.logger.info(
+            f"Appel API OpenAI (modèle: {self.model_name}) avec params: {params}"
+        )
+        if self.log_full_content:
+            try:
+                messages_json = json.dumps(messages, indent=2, ensure_ascii=False)
+                self.logger.debug(
+                    f"Contenu JSON envoyé à l'API:\n{messages_json}"
+                )
+            except Exception:
+                self.logger.debug(
+                    f"Contenu brut (non-JSON) envoyé à l'API: {messages}"
+                )
+
         try:
             response = self.client.chat.completions.create(
                 model=self.model_name,
@@ -124,14 +140,28 @@ class OpenAIProvider(OpenAIBatchMixin, BaseProvider):
                 raise ValueError("Chaque message doit avoir 'role' et 'content'")
         
         params = self._preparer_parametres(**kwargs)
-        
+
         # Filtrer les paramètres non supportés (comme top_k)
         params = self._filtrer_parametres_openai(params)
-        
+
         # GPT-4.1 famille utilise max_completion_tokens
         if 'max_tokens' in params and self.model_name.startswith('gpt-4.1'):
             params['max_completion_tokens'] = params.pop('max_tokens')
-        
+
+        self.logger.info(
+            f"Appel API OpenAI (modèle: {self.model_name}) avec params: {params}"
+        )
+        if self.log_full_content:
+            try:
+                messages_json = json.dumps(messages, indent=2, ensure_ascii=False)
+                self.logger.debug(
+                    f"Contenu JSON envoyé à l'API:\n{messages_json}"
+                )
+            except Exception:
+                self.logger.debug(
+                    f"Contenu brut (non-JSON) envoyé à l'API: {messages}"
+                )
+
         try:
             response = self.client.chat.completions.create(
                 model=self.model_name,
