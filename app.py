@@ -142,6 +142,22 @@ def hex_to_rgb(hex_color: str) -> tuple:
     return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
 
 
+def extraire_json_de_reponse(texte_brut: str) -> str:
+    """
+    Trouve et extrait la première structure JSON valide d'une chaîne de caractères.
+    """
+    try:
+        start_index = texte_brut.find('{')
+        end_index = texte_brut.rfind('}')
+        if start_index != -1 and end_index != -1 and end_index > start_index:
+            json_potentiel = texte_brut[start_index : end_index + 1]
+            json.loads(json_potentiel)  # Teste si le JSON est valide
+            return json_potentiel
+    except (json.JSONDecodeError, TypeError):
+        return texte_brut  # Retourne le texte original si l'extraction échoue
+    return texte_brut
+
+
 
 # Dictionnaire des limites de tokens par modèle
 MODEL_MAX_TOKENS = {
@@ -802,7 +818,8 @@ with st.expander("Suivi des lots (Batches)"):
                                 succes_global = True
                                 for res in results_export:
                                     try:
-                                        chunks_traduits.append(json.loads(res.clean_response))
+                                        texte_json_nettoye = extraire_json_de_reponse(res.clean_response)
+                                        chunks_traduits.append(json.loads(texte_json_nettoye))
                                     except (json.JSONDecodeError, TypeError):
                                         succes_global = False
                                         st.error(
