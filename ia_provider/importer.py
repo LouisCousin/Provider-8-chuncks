@@ -153,7 +153,7 @@ def analyser_document(
 
 def decouper_document_en_chunks(
     document_structure: Dict[str, List[Dict[str, Any]]],
-    seuil_blocs: int = 200,
+    seuil_blocs: int = 150,
 ) -> List[Dict[str, List[Dict[str, Any]]]]:
     """Découpe une structure de document en plusieurs chunks si elle dépasse un seuil.
 
