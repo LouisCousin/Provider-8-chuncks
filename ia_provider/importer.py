@@ -153,23 +153,20 @@ def analyser_document(
 
 def decouper_document_en_chunks(
     document_structure: Dict[str, List[Dict[str, Any]]],
-    seuil_blocs: int = 150,
+    seuil_blocs: int = 50,
 ) -> List[Dict[str, List[Dict[str, Any]]]]:
-    """Découpe une structure de document en plusieurs chunks si elle dépasse un seuil.
+    """Découpe une structure de document en plusieurs chunks.
 
-    Args:
-        document_structure: Structure complète du document analysé.
-        seuil_blocs: Nombre maximum de blocs autorisés par chunk.
-
-    Returns:
-        Liste de structures de document découpées. Si le document
-        ne dépasse pas ``seuil_blocs``, la liste contiendra une seule
-        structure correspondant au document original.
+    Priorise le découpage sémantique sur les ``heading_1`` mais force
+    une coupe si le chunk dépasse ``seuil_blocs`` pour éviter les
+    chunks trop volumineux.
     """
 
     corps = document_structure.get("body", [])
+    header = document_structure.get("header", [])
+    footer = document_structure.get("footer", [])
 
-    # Si le document est sous le seuil, aucune découpe nécessaire
+    # Si le document est déjà petit, aucune découpe n'est nécessaire.
     if len(corps) <= seuil_blocs:
         return [document_structure]
 
@@ -177,49 +174,28 @@ def decouper_document_en_chunks(
     chunk_courant: List[Dict[str, Any]] = []
 
     for bloc in corps:
-        # RÈGLE 1 : Si le chunk courant atteint le seuil, on le coupe de force.
+        # RÈGLE 1 (Prioritaire) : Découpage sémantique sur les titres de chapitre
+        if bloc.get("type") == "heading_1" and chunk_courant:
+            chunks.append({"header": header, "body": chunk_courant, "footer": footer})
+            chunk_courant = [bloc]  # Le nouveau chunk commence avec le titre
+            continue
+
+        # RÈGLE 2 (Garde-fou) : Forcer la coupe si le seuil est atteint
         if len(chunk_courant) >= seuil_blocs:
-            # RÈGLE 3 : Avant de couper, on vérifie s'il y a un titre orphelin.
+            # S'assurer de ne pas laisser un titre orphelin à la fin du chunk
             if chunk_courant and chunk_courant[-1].get("type", "").startswith("heading"):
                 titre_orphelin = chunk_courant.pop()
-                nouveau_chunk_structure = {
-                    "header": document_structure.get("header", []),
-                    "body": chunk_courant,
-                    "footer": document_structure.get("footer", []),
-                }
-                chunks.append(nouveau_chunk_structure)
-
-                # Le nouveau chunk commence avec le titre qui était orphelin
+                chunks.append({"header": header, "body": chunk_courant, "footer": footer})
                 chunk_courant = [titre_orphelin, bloc]
-                continue
             else:
-                nouveau_chunk_structure = {
-                    "header": document_structure.get("header", []),
-                    "body": chunk_courant,
-                    "footer": document_structure.get("footer", []),
-                }
-                chunks.append(nouveau_chunk_structure)
-                chunk_courant = []
-
-        # Découpage sémantique sur les titres de chapitre
-        if bloc.get("type") == "heading_1" and chunk_courant:
-            nouveau_chunk_structure = {
-                "header": document_structure.get("header", []),
-                "body": chunk_courant,
-                "footer": document_structure.get("footer", []),
-            }
-            chunks.append(nouveau_chunk_structure)
-            chunk_courant = []
+                chunks.append({"header": header, "body": chunk_courant, "footer": footer})
+                chunk_courant = [bloc]
+            continue
 
         chunk_courant.append(bloc)
 
-    # Ajouter le dernier chunk restant
+    # Ajouter le dernier chunk restant s'il n'est pas vide
     if chunk_courant:
-        dernier_chunk_structure = {
-            "header": document_structure.get("header", []),
-            "body": chunk_courant,
-            "footer": document_structure.get("footer", []),
-        }
-        chunks.append(dernier_chunk_structure)
+        chunks.append({"header": header, "body": chunk_courant, "footer": footer})
 
     return chunks
