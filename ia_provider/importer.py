@@ -1,14 +1,13 @@
 from __future__ import annotations
+
 import logging
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Tuple
 
 import docx
-from docx.document import Document as DocumentObject
-from docx.section import _Header, _Footer
 from docx.opc.exceptions import OpcError
 from docx.oxml.table import CT_Tbl
 from docx.oxml.text.paragraph import CT_P
-from docx.table import Table, _Cell
+from docx.table import Table
 from docx.text.paragraph import Paragraph
 import fitz  # PyMuPDF
 
@@ -18,131 +17,118 @@ logging.basicConfig(
 )
 
 
-def _extraire_style_run(run) -> Dict[str, Any]:
-    """Extrait les informations de style d'un segment de texte (run)."""
-    font = run.font
-    color = font.color.rgb if font.color and font.color.rgb else None
-    return {
-        "text": run.text,
-        "style": {
-            "font_name": font.name,
-            "font_size": font.size.pt if font.size else None,
-            "is_bold": font.bold,
-            "is_italic": font.italic,
-            "font_color_rgb": str(color) if color else None,
-        },
-    }
+def _convertir_docx_en_markdown(document: docx.Document) -> str:
+    """Convertit un ``Document`` DOCX en texte Markdown."""
 
+    markdown_lines: list[str] = []
 
-def _analyser_contenu_block(parent: Union[DocumentObject, _Header, _Footer, _Cell]) -> List[Dict[str, Any]]:
-    """Analyse un conteneur (document, header, cell, etc.) et retourne la structure des blocs."""
-
-    block_items = []
-    # Logique qui s'adapte au type de "parent"
-    if hasattr(parent, "element"):
-        # Cas pour le corps du document et les cellules de tableau
-        parent_element = parent._tc if isinstance(parent, _Cell) else parent.element.body
-        for child in parent_element.iterchildren():
-            if isinstance(child, CT_P):
-                block_items.append(Paragraph(child, parent))
-            elif isinstance(child, CT_Tbl):
-                block_items.append(Table(child, parent))
-    elif hasattr(parent, "paragraphs"):
-        # Cas pour les en-têtes (_Header) et pieds de page (_Footer)
-        # Note: L'ordre n'est pas garanti si les paragraphes et tableaux sont mélangés
-        block_items.extend(parent.paragraphs)
-        block_items.extend(parent.tables)
-
-    contenu_structure: List[Dict[str, Any]] = []
-    for block in block_items:
-        if isinstance(block, Paragraph):
-            if not block.text.strip():
+    for element in document.element.body:
+        if isinstance(element, CT_P):
+            paragraphe = Paragraph(element, document)
+            if not paragraphe.text.strip():
+                markdown_lines.append("")
                 continue
 
-            style_name = block.style.name.lower() if block.style and block.style.name else ""
+            style_name = paragraphe.style.name if paragraphe.style else ""
+            style_lower = style_name.lower()
 
-            # Gestion des listes
-            if "list" in style_name or "liste" in style_name:
-                if contenu_structure and contenu_structure[-1]["type"] == "list":
-                    contenu_structure[-1]["items"].append(block.text)
-                else:
-                    contenu_structure.append({"type": "list", "items": [block.text]})
-                continue
+            contenu = ""
+            for run in paragraphe.runs:
+                texte = run.text
+                if not texte:
+                    continue
+                if run.bold and run.italic:
+                    texte = f"***{texte}***"
+                elif run.bold:
+                    texte = f"**{texte}**"
+                elif run.italic:
+                    texte = f"*{texte}*"
+                contenu += texte
 
-            # Gestion des titres et paragraphes
-            block_type = "paragraph"
-            if style_name.startswith("heading 1") or style_name.startswith("titre 1"):
-                block_type = "heading_1"
-            elif style_name.startswith("heading 2") or style_name.startswith("titre 2"):
-                block_type = "heading_2"
+            if style_lower.startswith("heading") or style_lower.startswith("titre"):
+                niveau = 1
+                for i in range(1, 7):
+                    if style_lower.startswith(f"heading {i}") or style_lower.startswith(
+                        f"titre {i}"
+                    ):
+                        niveau = i
+                        break
+                markdown_lines.append("#" * niveau + f" {contenu}")
+            elif "list bullet" in style_lower:
+                markdown_lines.append(f"* {contenu}")
+            else:
+                markdown_lines.append(contenu)
 
-            runs_data = [_extraire_style_run(run) for run in block.runs if run.text.strip()]
-            if runs_data:
-                contenu_structure.append({"type": block_type, "runs": runs_data})
+            markdown_lines.append("")
 
-        elif isinstance(block, Table):
-            table_data: List[List[Dict[str, Any]]] = []
-            for row in block.rows:
-                row_data = [_analyser_contenu_block(cell) for cell in row.cells]
-                table_data.append(row_data)
-            if table_data:
-                contenu_structure.append({"type": "table", "rows": table_data})
+        elif isinstance(element, CT_Tbl):
+            table = Table(element, document)
+            lignes_tableau: list[list[str]] = []
+            for row in table.rows:
+                cellules = []
+                for cell in row.cells:
+                    textes_cellule: list[str] = []
+                    for para in cell.paragraphs:
+                        contenu_para = ""
+                        for run in para.runs:
+                            texte = run.text
+                            if not texte:
+                                continue
+                            if run.bold and run.italic:
+                                texte = f"***{texte}***"
+                            elif run.bold:
+                                texte = f"**{texte}**"
+                            elif run.italic:
+                                texte = f"*{texte}*"
+                            contenu_para += texte
+                        textes_cellule.append(contenu_para)
+                    cellules.append("<br>".join(textes_cellule))
+                lignes_tableau.append(cellules)
 
-    return contenu_structure
+            if lignes_tableau:
+                entete = "| " + " | ".join(lignes_tableau[0]) + " |"
+                separateur = "| " + " | ".join(["---"] * len(lignes_tableau[0])) + " |"
+                markdown_lines.append(entete)
+                markdown_lines.append(separateur)
+                for ligne in lignes_tableau[1:]:
+                    markdown_lines.append("| " + " | ".join(ligne) + " |")
+                markdown_lines.append("")
+
+    return "\n".join(markdown_lines).strip()
 
 
-def analyser_docx(
-    file_stream,
-) -> Tuple[Dict[str, List[Dict[str, Any]]], None]:
-    """Extrait le contenu structuré d'un DOCX, y compris en-têtes et pieds de page."""
+def analyser_docx(file_stream) -> Tuple[str, None]:
+    """Analyse un fichier DOCX et retourne son contenu Markdown."""
+
     try:
         file_stream.seek(0)
         document = docx.Document(file_stream)
-
-        # 1. Analyser le corps du document
-        corps_structure = _analyser_contenu_block(document)
-
-        # 2. Analyser l'en-tête et le pied de page (simplifié à la première section)
-        header_structure = []
-        footer_structure = []
-        if document.sections:
-            section = document.sections[0]
-            if section.header:
-                header_structure = _analyser_contenu_block(section.header)
-            if section.footer:
-                footer_structure = _analyser_contenu_block(section.footer)
-
-        document_complet = {
-            "header": header_structure,
-            "body": corps_structure,
-            "footer": footer_structure,
-        }
-        return document_complet, None
-
+        markdown_content = _convertir_docx_en_markdown(document)
+        return markdown_content, None
     except OpcError as e:
         logging.error(f"Fichier DOCX corrompu : {e}")
-        return {"header": [], "body": [], "footer": []}, None
-    except Exception as e:
+        return "", None
+    except Exception as e:  # pragma: no cover - erreurs inattendues
         logging.error(f"Erreur inattendue sur DOCX : {e}", exc_info=True)
-        return {"header": [], "body": [], "footer": []}, None
+        return "", None
 
 
 def analyser_pdf(file_stream) -> Tuple[str, None]:
     """Extrait le contenu textuel brut d'un PDF."""
+
     try:
         file_stream.seek(0)
         with fitz.open(stream=file_stream.read(), filetype="pdf") as doc:
             full_text = "".join(page.get_text() for page in doc)
         return full_text, None
-    except Exception as e:
+    except Exception as e:  # pragma: no cover - erreurs inattendues
         logging.error(f"Erreur inattendue sur PDF : {e}", exc_info=True)
         return "", None
 
 
-def analyser_document(
-    fichier,
-) -> Tuple[Union[str, Dict[str, List[Dict[str, Any]]]], None]:
+def analyser_document(fichier) -> Tuple[str, None]:
     """Analyse un fichier importé et choisit la méthode appropriée."""
+
     filename = fichier.name.lower()
     if filename.endswith(".docx"):
         return analyser_docx(fichier)
@@ -150,52 +136,3 @@ def analyser_document(
         return analyser_pdf(fichier)
     return "", None
 
-
-def decouper_document_en_chunks(
-    document_structure: Dict[str, List[Dict[str, Any]]],
-    seuil_blocs: int = 50,
-) -> List[Dict[str, List[Dict[str, Any]]]]:
-    """Découpe une structure de document en plusieurs chunks.
-
-    Priorise le découpage sémantique sur les ``heading_1`` mais force
-    une coupe si le chunk dépasse ``seuil_blocs`` pour éviter les
-    chunks trop volumineux.
-    """
-
-    corps = document_structure.get("body", [])
-    header = document_structure.get("header", [])
-    footer = document_structure.get("footer", [])
-
-    # Si le document est déjà petit, aucune découpe n'est nécessaire.
-    if len(corps) <= seuil_blocs:
-        return [document_structure]
-
-    chunks: List[Dict[str, List[Dict[str, Any]]]] = []
-    chunk_courant: List[Dict[str, Any]] = []
-
-    for bloc in corps:
-        # RÈGLE 1 (Prioritaire) : Découpage sémantique sur les titres de chapitre
-        if bloc.get("type") == "heading_1" and chunk_courant:
-            chunks.append({"header": header, "body": chunk_courant, "footer": footer})
-            chunk_courant = [bloc]  # Le nouveau chunk commence avec le titre
-            continue
-
-        # RÈGLE 2 (Garde-fou) : Forcer la coupe si le seuil est atteint
-        if len(chunk_courant) >= seuil_blocs:
-            # S'assurer de ne pas laisser un titre orphelin à la fin du chunk
-            if chunk_courant and chunk_courant[-1].get("type", "").startswith("heading"):
-                titre_orphelin = chunk_courant.pop()
-                chunks.append({"header": header, "body": chunk_courant, "footer": footer})
-                chunk_courant = [titre_orphelin, bloc]
-            else:
-                chunks.append({"header": header, "body": chunk_courant, "footer": footer})
-                chunk_courant = [bloc]
-            continue
-
-        chunk_courant.append(bloc)
-
-    # Ajouter le dernier chunk restant s'il n'est pas vide
-    if chunk_courant:
-        chunks.append({"header": header, "body": chunk_courant, "footer": footer})
-
-    return chunks

@@ -469,36 +469,19 @@ uploaded_file = st.file_uploader(
 
 prompt_final = user_instruction
 prompt_text = user_instruction
-document_structure_pour_export = None
 
 if uploaded_file is not None:
-    contenu_brut, template_styles = importer.analyser_document(uploaded_file)
-    st.session_state.source_template_styles = template_styles
-
-    # Gérer le cas du PDF qui retourne du texte brut
-    if isinstance(contenu_brut, str):
-        texte_a_traiter = contenu_brut
+    contenu_markdown, _ = importer.analyser_document(uploaded_file)
+    st.session_state.source_template_styles = None
+    if uploaded_file.name.lower().endswith(".pdf"):
         st.warning("⚠️ L'analyse de style n'est pas supportée pour les PDF.")
-        prompt_final = (
-            "Voici une instruction à appliquer sur le contenu d'un document.\n\n"
-            f'Instruction de l\'utilisateur : "{user_instruction}"\n\n'
-            "Contenu du document à analyser :\n"
-            f"{texte_a_traiter}\n\n"
-            "---\nInstruction de formatage : Structure ta réponse finale en utilisant la syntaxe Markdown."
-        )
-    # Gérer le cas du DOCX qui retourne un dictionnaire structuré
-    elif isinstance(contenu_brut, dict):
-        document_structure_pour_export = contenu_brut
-        json_str = json.dumps(contenu_brut, ensure_ascii=False, indent=2)
 
-        prompt_final = (
-            "INSTRUCTION : Tu es un assistant expert en traduction. Tu dois traduire le contenu textuel trouvé à l'intérieur d'une structure de données JSON.\n"
-            f"TÂCHE DE TRADUCTION : \"{user_instruction}\"\n"
-            "RÈGLE ABSOLUE : Tu dois impérativement conserver la structure JSON d'origine à l'identique (toutes les clés et leur hiérarchie : 'header', 'body', 'type', 'runs', 'style', etc.).\n"
-            "RÈGLE ABSOLUE : Ne traduis UNIQUEMENT que les valeurs textuelles associées à la clé 'text'. Toutes les autres valeurs (comme 'font_name', 'is_bold', etc.) doivent rester inchangées.\n"
-            "RÈGLE ABSOLUE : Ta réponse finale ne doit contenir QUE le JSON traduit, sans aucun texte, commentaire, ou explication avant ou après.\n\n"
-            f"JSON À TRAITER :\n{json_str}"
-        )
+    prompt_final = (
+        "INSTRUCTION : Tu es un assistant expert en traduction. Tu dois traduire le texte suivant qui est au format Markdown.\n"
+        f"TÂCHE DE TRADUCTION : \"{user_instruction}\"\n"
+        "RÈGLE ABSOLUE : Ta réponse finale ne doit contenir QUE le texte traduit, en conservant impérativement la syntaxe Markdown d'origine (titres, listes, gras, etc.).\n\n"
+        f"TEXTE MARKDOWN À TRAITER :\n{contenu_markdown}"
+    )
 else:
     st.session_state.source_template_styles = None
 
@@ -593,27 +576,10 @@ if generate_button:
 
                 with st.container():
                     st.markdown("### 🤖 Réponse")
-
-                    if isinstance(document_structure_pour_export, dict):
-                        try:
-                            reponse_structuree = json.loads(response)
-                            st.json(reponse_structuree)
-                            buffer = exporter.generer_export_docx(
-                                reponse_structuree, styles_interface
-                            )
-                        except json.JSONDecodeError:
-                            st.error(
-                                "L'IA n'a pas retourné une structure JSON valide. L'export utilisera une mise en forme basique."
-                            )
-                            st.write(response)
-                            buffer = exporter.generer_export_docx_markdown(
-                                response, styles_interface
-                            )
-                    else:
-                        st.write(response)
-                        buffer = exporter.generer_export_docx_markdown(
-                            response, styles_interface
-                        )
+                    st.write(response)
+                    buffer = exporter.generer_export_docx_markdown(
+                        response, styles_interface
+                    )
 
                     st.download_button(
                         "⬇️ Export DOCX",
@@ -640,50 +606,19 @@ if generate_button:
                 try:
                     requests_pour_le_lot: List[BatchRequest] = []
 
-                    if isinstance(document_structure_pour_export, dict):
-                        chunks = importer.decouper_document_en_chunks(
-                            document_structure_pour_export
+                    request_body = {
+                        "model": selected_model,
+                        "messages": [{"role": "user", "content": prompt}],
+                        **params,
+                    }
+                    requests_pour_le_lot.append(
+                        BatchRequest(
+                            custom_id=f"req_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+                            body=request_body,
+                            prompt_text=prompt_text,
                         )
-                        if len(chunks) > 1:
-                            st.info(
-                                f"Document volumineux détecté. Il sera traité en {len(chunks)} parties."
-                            )
+                    )
 
-                        custom_id_base = f"req_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-                        for i, chunk in enumerate(chunks):
-                            json_str = json.dumps(chunk, ensure_ascii=False, indent=2)
-                            prompt_chunk = (
-                                "INSTRUCTION : Tu es un assistant expert en traduction. Tu dois traduire le contenu textuel trouvé à l'intérieur d'une structure de données JSON.\n"
-                                f"TÂCHE DE TRADUCTION : \"{user_instruction}\"\n"
-                                "RÈGLE ABSOLUE : Tu dois impérativement conserver la structure JSON d'origine à l'identique (toutes les clés et leur hiérarchie : 'header', 'body', 'type', 'runs', 'style', etc.).\n"
-                                "RÈGLE ABSOLUE : Ne traduis UNIQUEMENT que les valeurs textuelles associées à la clé 'text'. Toutes les autres valeurs (comme 'font_name', 'is_bold', etc.) doivent rester inchangées.\n"
-                                "RÈGLE ABSOLUE : Ta réponse finale ne doit contenir QUE le JSON traduit, sans aucun texte, commentaire, ou explication avant ou après.\n\n"
-                                f"JSON À TRAITER :\n{json_str}"
-                            )
-
-                            request = BatchRequest(
-                                custom_id=f"{custom_id_base}_chunk_{i+1:03d}",
-                                body={
-                                    "model": selected_model,
-                                    "messages": [{"role": "user", "content": prompt_chunk}],
-                                    **params,
-                                },
-                                prompt_text=f"Chunk {i+1}/{len(chunks)}",
-                            )
-                            requests_pour_le_lot.append(request)
-                    else:
-                        request_body = {
-                            "model": selected_model,
-                            "messages": [{"role": "user", "content": prompt}],
-                            **params,
-                        }
-                        requests_pour_le_lot.append(
-                            BatchRequest(
-                                custom_id=f"req_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-                                body=request_body,
-                                prompt_text=prompt_text,
-                            )
-                        )
 
                     with st.spinner(
                         f"Soumission du lot de {len(requests_pour_le_lot)} chunk(s) vers {selected_model}..."
@@ -692,14 +627,6 @@ if generate_button:
                             requests=requests_pour_le_lot
                         )
 
-                    if document_structure_pour_export:
-                        os.makedirs("temp", exist_ok=True)
-                        structure_filepath = f"temp/structure_{batch_id}.json"
-                        with open(structure_filepath, "w", encoding="utf-8") as f:
-                            json.dump(document_structure_pour_export, f, ensure_ascii=False)
-                        st.info(
-                            f"Structure du document sauvegardée pour le lot {batch_id}"
-                        )
 
                     st.success("✅ Tâche soumise avec succès en traitement par lot.")
                     st.info(f"**ID du lot (Batch ID) :** `{batch_id}`")
@@ -801,96 +728,32 @@ with st.expander("Suivi des lots (Batches)"):
                             else:
                                 st.error("Échec de l'annulation.")
                     elif status == 'COMPLETED':
-                        structure_originale_trouvee = False
-                        structure_filepath = f"temp/structure_{batch['id']}.json"
-                        if os.path.exists(structure_filepath):
-                            with open(structure_filepath, "r", encoding="utf-8") as f:
-                                document_structure_pour_export = json.load(f)
-                                structure_originale_trouvee = True
 
-                        if not structure_originale_trouvee:
-                            st.error(
-                                f"Impossible de trouver la structure originale pour le lot {batch['id']}. Le réassemblage est impossible."
-                            )
-                        else:
-                            results_export = batch_manager.get_results(batch['id'])
-                            if results_export:
-                                styles_interface = {
-                                    "response": {
-                                        "font_name": reponse_font,
-                                        "font_size": reponse_size,
-                                        "font_color_rgb": hex_to_rgb(reponse_color),
-                                        "is_bold": reponse_bold,
-                                        "is_italic": reponse_italic,
-                                    }
+                        results_export = batch_manager.get_results(batch['id'])
+                        if results_export:
+                            styles_interface = {
+                                "response": {
+                                    "font_name": reponse_font,
+                                    "font_size": reponse_size,
+                                    "font_color_rgb": hex_to_rgb(reponse_color),
+                                    "is_bold": reponse_bold,
+                                    "is_italic": reponse_italic,
                                 }
-
-                                results_export.sort(key=lambda r: r.custom_id)
-
-                                # Validation de la séquence des chunks
-                                for i, res in enumerate(results_export):
-                                    expected_suffix = f"_chunk_{i+1:03d}"
-                                    if not res.custom_id.endswith(expected_suffix):
-                                        st.warning(
-                                            f"Avertissement : Séquence de chunks potentiellement désordonnée. "
-                                            f"Attendu: se terminant par '{expected_suffix}', Obtenu: '{res.custom_id}'"
-                                        )
-
-                                chunks_traduits: List[Dict[str, Any]] = []
-                                succes_global = True
-                                for res in results_export:
-                                    try:
-                                        texte_json_nettoye = extraire_json_de_reponse(res.clean_response)
-                                        chunks_traduits.append(json.loads(texte_json_nettoye))
-                                    except (json.JSONDecodeError, TypeError):
-                                        succes_global = False
-                                        st.error(
-                                            f"Le chunk {res.custom_id} n'a pas pu être parsé."
-                                        )
-                                        break
-
-                                if succes_global:
-                                    structure_finale = exporter.fusionner_chunks_traduits(
-                                        chunks_traduits
-                                    )
-
-                                    # Vérification de la cohérence avant de générer le fichier
-                                    if not structure_finale.get("body"):
-                                        st.error(
-                                            "Erreur critique : Le document final réassemblé est vide. Le fichier DOCX ne sera pas généré."
-                                        )
-                                    else:
-                                        buffer = exporter.generer_export_docx(
-                                            structure_finale, styles_interface
-                                        )
-                                        st.success(
-                                            "Document final réassemblé et prêt."
-                                        )
-                                        st.download_button(
-                                            "⬇️ Export DOCX",
-                                            data=buffer.getvalue(),
-                                            file_name=f"batch_{batch['id']}.docx",
-                                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                                            key=f"download_{batch['id']}",
-                                        )
-                                else:
-                                    st.error(
-                                        "Échec du réassemblage. Export du texte brut disponible."
-                                    )
-                                    texte_brut = "\n".join(
-                                        res.clean_response for res in results_export
-                                    )
-                                    buffer = exporter.generer_export_docx_markdown(
-                                        texte_brut, styles_interface
-                                    )
-                                    st.download_button(
-                                        "⬇️ Export DOCX",
-                                        data=buffer.getvalue(),
-                                        file_name=f"batch_{batch['id']}.docx",
-                                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                                        key=f"download_{batch['id']}",
-                                    )
-
+                            }
+                            texte_brut = "\n".join(
+                                res.clean_response for res in results_export
+                            )
+                            buffer = exporter.generer_export_docx_markdown(
+                                texte_brut, styles_interface
+                            )
+                            st.success("Document final prêt.")
+                            st.download_button(
+                                "⬇️ Export DOCX",
+                                data=buffer.getvalue(),
+                                file_name=f"batch_{batch['id']}.docx",
+                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                key=f"download_{batch['id']}",
+                            )
                 if st.session_state[state_key]:
                     with st.spinner(f"Récupération des résultats pour {batch['id']}..."):
                         results = batch_manager.get_results(batch['id'])
