@@ -21,27 +21,33 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 
 
 def fusionner_chunks_traduits(chunks_structures: List[Dict]) -> Dict[str, List[Dict[str, Any]]]:
-    """Fusionne plusieurs structures de document traduites en une seule.
+    """Fusionne plusieurs structures de document traduites en une seule."""
 
-    Args:
-        chunks_structures: Liste de structures issues de la traduction des chunks.
-
-    Returns:
-        Une structure unique combinant toutes les parties du document.
-    """
+    logging.info(f"Début de la fusion de {len(chunks_structures)} chunks.")
 
     if not chunks_structures:
+        logging.warning(
+            "Aucun chunk à fusionner. Une structure de document vide sera retournée."
+        )
         return {"header": [], "body": [], "footer": []}
 
+    # On prend le premier chunk comme base pour l'en-tête et le pied de page
     document_final: Dict[str, List[Dict[str, Any]]] = {
         "header": chunks_structures[0].get("header", []),
         "body": [],
         "footer": chunks_structures[0].get("footer", []),
     }
 
-    for chunk in chunks_structures:
-        document_final["body"].extend(chunk.get("body", []))
+    total_blocs = 0
+    for i, chunk in enumerate(chunks_structures):
+        blocs_chunk = chunk.get("body", [])
+        logging.info(f"  -> Ajout de {len(blocs_chunk)} blocs depuis le chunk {i+1}.")
+        document_final["body"].extend(blocs_chunk)
+        total_blocs += len(blocs_chunk)
 
+    logging.info(
+        f"Fusion terminée. Le document final contient {total_blocs} blocs dans son corps."
+    )
     return document_final
 
 
