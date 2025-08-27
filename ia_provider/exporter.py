@@ -1,54 +1,19 @@
 from __future__ import annotations
 import io
-import json
 import logging
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List
 
 from docx import Document
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Pt, RGBColor
-from docx.text.paragraph import Paragraph
-from docx.table import Table, _Cell
-from docx.section import _Header, _Footer
 from docx.opc.constants import RELATIONSHIP_TYPE as RT
 from docx.text.run import Run
 import markdown as md
 from bs4 import BeautifulSoup
-from bs4.element import NavigableString, Tag
+from bs4.element import NavigableString
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-
-
-def fusionner_chunks_traduits(chunks_structures: List[Dict]) -> Dict[str, List[Dict[str, Any]]]:
-    """Fusionne plusieurs structures de document traduites en une seule."""
-
-    logging.info(f"Début de la fusion de {len(chunks_structures)} chunks.")
-
-    if not chunks_structures:
-        logging.warning(
-            "Aucun chunk à fusionner. Une structure de document vide sera retournée."
-        )
-        return {"header": [], "body": [], "footer": []}
-
-    # On prend le premier chunk comme base pour l'en-tête et le pied de page
-    document_final: Dict[str, List[Dict[str, Any]]] = {
-        "header": chunks_structures[0].get("header", []),
-        "body": [],
-        "footer": chunks_structures[0].get("footer", []),
-    }
-
-    total_blocs = 0
-    for i, chunk in enumerate(chunks_structures):
-        blocs_chunk = chunk.get("body", [])
-        logging.info(f"  -> Ajout de {len(blocs_chunk)} blocs depuis le chunk {i+1}.")
-        document_final["body"].extend(blocs_chunk)
-        total_blocs += len(blocs_chunk)
-
-    logging.info(
-        f"Fusion terminée. Le document final contient {total_blocs} blocs dans son corps."
-    )
-    return document_final
 
 
 class MarkdownToDocxConverter:
@@ -240,82 +205,6 @@ class MarkdownToDocxConverter:
 
             self.doc.add_paragraph(text)
 
-def _appliquer_style_run(run, style: Dict):
-    """Applique un dictionnaire de style à un objet Run."""
-    if not style:
-        return
-    run.bold = style.get("is_bold")
-    run.italic = style.get("is_italic")
-    if style.get("font_name"):
-        run.font.name = style["font_name"]
-    if style.get("font_size"):
-        run.font.size = Pt(int(style["font_size"]))
-    if style.get("font_color_rgb"):
-        try:
-            run.font.color.rgb = RGBColor.from_string(style["font_color_rgb"])
-        except ValueError:
-            pass  # Ignore les couleurs mal formatées
-
-
-def _reconstruire_blocs(parent: Union[Document, _Header, _Footer, _Cell], blocs_structure: List[Dict]):
-    """Peuple un conteneur (document, header, etc.) avec le contenu structuré."""
-    for bloc in blocs_structure:
-        type_bloc = bloc.get("type", "paragraph")
-
-        if type_bloc.startswith("heading"):
-            niveau = int(type_bloc.split("_")[-1])
-            p = parent.add_heading(level=niveau)
-        elif type_bloc == "list":
-            for item in bloc.get("items", []):
-                parent.add_paragraph(item, style='List Bullet')
-            continue
-        elif type_bloc == "table":
-            table_data = bloc.get("rows", [])
-            if table_data:
-                table = parent.add_table(rows=len(table_data), cols=len(table_data[0]))
-                for i, row_data in enumerate(table_data):
-                    for j, cell_structure in enumerate(row_data):
-                        _reconstruire_blocs(table.cell(i, j), cell_structure)
-            continue
-        else:  # paragraph
-            p = parent.add_paragraph()
-
-        for run_data in bloc.get("runs", []):
-            run = p.add_run(run_data.get("text", ""))
-            _appliquer_style_run(run, run_data.get("style"))
-
-
-def generer_export_docx(document_structure: Dict, styles_interface: Dict) -> io.BytesIO:
-    """Génère un DOCX à partir d'une structure de document complète."""
-    document = Document()
-
-    # 1. Reconstruire l'en-tête et le pied de page
-    if document_structure.get("header"):
-        _reconstruire_blocs(document.sections[0].header, document_structure["header"])
-    if document_structure.get("footer"):
-        _reconstruire_blocs(document.sections[0].footer, document_structure["footer"])
-
-    # 2. Insérer la Table des Matières
-    p_tdm = document.add_paragraph()
-    run = p_tdm.add_run()
-    fldChar = OxmlElement('w:fldChar')
-    fldChar.set(qn('w:fldCharType'), 'begin')
-    run._r.append(fldChar)
-    instrText = OxmlElement('w:instrText')
-    instrText.set(qn('xml:space'), 'preserve')
-    instrText.text = 'TOC \\o "1-3" \\h \\z \\u'
-    run._r.append(instrText)
-    fldChar = OxmlElement('w:fldChar')
-    fldChar.set(qn('w:fldCharType'), 'end')
-    run._r.append(fldChar)
-
-    # 3. Reconstruire le corps du document
-    _reconstruire_blocs(document, document_structure.get("body", []))
-
-    output = io.BytesIO()
-    document.save(output)
-    output.seek(0)
-    return output
 
 
 def generer_export_docx_markdown(texte_markdown: str, styles_interface: Dict) -> io.BytesIO:
