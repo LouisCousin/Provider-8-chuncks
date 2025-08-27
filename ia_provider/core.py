@@ -6,6 +6,7 @@ Contient les classes abstraites, le gestionnaire et les fonctions utilitaires.
 
 import os
 import yaml
+import logging
 from abc import ABC, abstractmethod
 from typing import Optional, Dict, Any, List, Type
 from dotenv import load_dotenv
@@ -102,20 +103,23 @@ class BaseProvider(ABC):
     Classe de base abstraite pour tous les providers IA.
     Définit l'interface commune que tous les providers doivent implémenter.
     """
-    
-    def __init__(self, model_name: str, api_key: str):
+
+    def __init__(self, model_name: str, api_key: str, log_full_content: bool = False):
         """
         Initialise le provider avec le modèle et la clé API.
-        
+
         Args:
             model_name: Nom du modèle à utiliser
             api_key: Clé API pour l'authentification
+            log_full_content: Active la journalisation détaillée du contenu JSON
         """
         if not api_key:
             raise ValueError("La clé API ne peut pas être vide")
-        
+
         self.model_name = model_name
         self.api_key = api_key
+        self.logger = logging.getLogger(self.__class__.__name__)
+        self.log_full_content = log_full_content
         self.default_params = load_config()
     
     @abstractmethod
@@ -232,13 +236,14 @@ class ProviderManager:
         
         print(f"Provider {provider_class.__name__} enregistré avec {len(models)} modèle(s)")
     
-    def get_provider(self, model_name: str, api_key: Optional[str] = None) -> BaseProvider:
+    def get_provider(self, model_name: str, api_key: Optional[str] = None, log_full_content: bool = False) -> BaseProvider:
         """
         Retourne une instance du provider approprié pour le modèle.
         
         Args:
             model_name: Nom du modèle à utiliser
             api_key: Clé API (optionnel, sera chargée depuis l'environnement si absente)
+            log_full_content: Active la journalisation détaillée du contenu JSON
             
         Returns:
             BaseProvider: Instance du provider configuré
@@ -266,7 +271,7 @@ class ProviderManager:
                     f"Veuillez la fournir explicitement ou la définir dans .env: {e}"
                 )
         
-        return provider_class(model_name, api_key)
+        return provider_class(model_name, api_key, log_full_content=log_full_content)
     
     def get_available_models(self) -> List[str]:
         """
