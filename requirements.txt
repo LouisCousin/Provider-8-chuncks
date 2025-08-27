@@ -1,0 +1,9 @@
+# Core dependencies
+streamlit
+openai
+anthropic
+python-docx  # DOCX processing
+markdown
+beautifulsoup4
+lxml
+PyMuPDF  # PDF processing

@@ -1,0 +1,38 @@
+[
+    {
+        "id": "msgbatch_016pZRY5iDbFz8s1E9oXnmfd",
+        "provider": "anthropic",
+        "status": "running",
+        "submitted_at": "2025-08-26T22:45:40.054717",
+        "requests": [
+            {
+                "custom_id": "req_20250826_224532",
+                "prompt_text": "Traduis ce document en anglais, en conservant un ton professionnel et fid\u00e8le \u00e0 l'original."
+            }
+        ]
+    },
+    {
+        "id": "msgbatch_01VnrBTu3SfCrdcPeGYXwu5c",
+        "provider": "anthropic",
+        "status": "running",
+        "submitted_at": "2025-08-26T22:31:24.594867",
+        "requests": [
+            {
+                "custom_id": "req_20250826_223123",
+                "prompt_text": "Traduis ce document en anglais, en conservant un ton professionnel et fid\u00e8le \u00e0 l'original."
+            }
+        ]
+    },
+    {
+        "id": "batch_68ae36e5da0881908c10273eda147631",
+        "provider": "openai",
+        "status": "running",
+        "submitted_at": "2025-08-26T18:36:22.208857",
+        "requests": [
+            {
+                "custom_id": "req_20250826_183619",
+                "prompt_text": "Traduit en espagnol"
+            }
+        ]
+    }
+]
