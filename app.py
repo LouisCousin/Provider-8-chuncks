@@ -741,7 +741,7 @@ with st.expander("Suivi des lots (Batches)"):
                                 }
                             }
                             texte_brut = "\n".join(
-                                res.clean_response for res in results_export
+                                res.clean_response or "" for res in results_export
                             )
                             buffer = exporter.generer_export_docx_markdown(
                                 texte_brut, styles_interface
