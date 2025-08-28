@@ -68,6 +68,7 @@ def _convertir_docx_en_markdown(document: docx.Document) -> str:
             markdown_lines.append("")
 
         elif isinstance(element, CT_Tbl):
+            logging.info("Tableau détecté dans le document source.")
             table = Table(element, document)
             lignes_tableau: list[list[str]] = []
             for row in table.rows:
@@ -88,6 +89,8 @@ def _convertir_docx_en_markdown(document: docx.Document) -> str:
                                 texte = f"*{texte}*"
                             contenu_para += texte
                         textes_cellule.append(contenu_para)
+                    if not textes_cellule:
+                        textes_cellule.append("")
                     cellules.append("<br>".join(textes_cellule))
                 lignes_tableau.append(cellules)
 
@@ -99,6 +102,9 @@ def _convertir_docx_en_markdown(document: docx.Document) -> str:
                 for ligne in lignes_tableau[1:]:
                     markdown_lines.append("| " + " | ".join(ligne) + " |")
                 markdown_lines.append("")
+                logging.info(
+                    f"Tableau converti en Markdown :\n{entete}\n{separateur}\n..."
+                )
 
     return "\n".join(markdown_lines).strip()
 

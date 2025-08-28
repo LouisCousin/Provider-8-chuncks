@@ -172,16 +172,31 @@ class MarkdownToDocxConverter:
             run.font.name = "Consolas"
             run._element.rPr.rFonts.set(qn("w:eastAsia"), "Consolas")
         elif tag == "table":
-            rows = elem.find_all("tr", recursive=False)
-            if rows:
-                first_row_cells = rows[0].find_all(["th", "td"], recursive=False)
-                cols = len(first_row_cells)
-                table = self.doc.add_table(rows=len(rows), cols=cols)
-                for r_idx, row in enumerate(rows):
-                    cells = row.find_all(["th", "td"], recursive=False)
-                    for c_idx, cell in enumerate(cells):
-                        paragraph = table.cell(r_idx, c_idx).paragraphs[0]
-                        self._add_inline(paragraph, cell)
+            logging.info("Tableau détecté dans le contenu Markdown.")
+            rows = elem.find_all("tr")
+            if not rows:
+                return
+
+            header_cells = rows[0].find_all(["th", "td"])
+            num_cols = len(header_cells)
+
+            table = self.doc.add_table(rows=1, cols=num_cols)
+            table.style = "Table Grid"
+
+            hdr_cells = table.rows[0].cells
+            for i, cell_elem in enumerate(header_cells):
+                hdr_cells[i].text = ""
+                paragraph = hdr_cells[i].paragraphs[0]
+                self._add_inline(paragraph, cell_elem)
+
+            for row_elem in rows[1:]:
+                row_cells_elem = row_elem.find_all(["td", "th"])
+                new_row_cells = table.add_row().cells
+                for i, cell_elem in enumerate(row_cells_elem):
+                    new_row_cells[i].text = ""
+                    paragraph = new_row_cells[i].paragraphs[0]
+                    self._add_inline(paragraph, cell_elem)
+            logging.info("Tableau reconstruit dans le document DOCX.")
         else:
             text = elem.get_text(strip=True)
             if text:
