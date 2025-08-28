@@ -149,7 +149,14 @@ class MarkdownToDocxConverter:
                 )
         elif tag in {"h1", "h2", "h3", "h4", "h5", "h6"}:
             level = int(tag[1])
-            paragraph = self.doc.add_heading(level=level)
+            style_name = f"Titre {level}"
+            try:
+                paragraph = self.doc.add_paragraph(style=style_name)
+            except KeyError:
+                logging.warning(
+                    f"Le style '{style_name}' n'a pas été trouvé. Utilisation du style par défaut 'Heading {level}'."
+                )
+                paragraph = self.doc.add_heading(level=level)
             self._add_inline(paragraph, elem)
         elif tag == "ul":
             for li in elem.find_all("li", recursive=False):
