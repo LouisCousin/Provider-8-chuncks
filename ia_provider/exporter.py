@@ -149,14 +149,22 @@ class MarkdownToDocxConverter:
                 )
         elif tag in {"h1", "h2", "h3", "h4", "h5", "h6"}:
             level = int(tag[1])
-            style_name = f"Titre {level}"
-            try:
-                paragraph = self.doc.add_paragraph(style=style_name)
-            except KeyError:
-                logging.warning(
-                    f"Le style '{style_name}' n'a pas été trouvé. Utilisation du style par défaut 'Heading {level}'."
-                )
-                paragraph = self.doc.add_heading(level=level)
+
+            # Utiliser directement la méthode ``add_heading`` afin d'appliquer
+            # les styles natifs de Word ("Heading 1", "Heading 2", ...). Cela
+            # garantit que la structure du document est correctement
+            # interprétée par les lecteurs DOCX et permet d'utiliser les
+            # fonctionnalités de navigation de Word.
+            paragraph = self.doc.add_heading(level=level)
+
+            # ``add_heading`` insère par défaut un run contenant le texte du
+            # titre passé en argument. Comme nous souhaitons gérer nous-même
+            # le contenu et les styles inline (gras, italique, liens, ...),
+            # nous nettoyons le paragraphe avant de le remplir.
+            paragraph.clear()
+
+            # Peupler le paragraphe avec le contenu de ``elem`` en conservant
+            # les styles inline éventuels.
             self._add_inline(paragraph, elem)
         elif tag == "ul":
             for li in elem.find_all("li", recursive=False):
