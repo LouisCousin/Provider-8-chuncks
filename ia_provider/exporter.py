@@ -31,15 +31,21 @@ class MarkdownToDocxConverter:
         style_overrides: Dict[str, Any] | None = None,
         *,
         style_name: str = "response",
+        is_heading: bool = False,
     ) -> None:
-        """Applique un style au ``run`` donné.
-
-        ``style_name`` permet de sélectionner un style de base dans ``self.styles``.
-        ``style_overrides`` peut être utilisé pour modifier certains attributs.
-        """
+        """Applique un style au ``run`` donné, en tenant compte du contexte (titre ou non)."""
 
         style = {**self.styles.get(style_name, {}), **(style_overrides or {})}
 
+        # Si le run appartient à un titre, ne modifier que le gras/italique afin de
+        # préserver les attributs du style de titre natif de Word.
+        if is_heading:
+            run.bold = style.get("is_bold", False)
+            run.italic = style.get("is_italic", False)
+            return
+
+        # Comportement normal pour le texte hors titres : appliquer l'ensemble
+        # des attributs définis.
         if font_name := style.get("font_name"):
             run.font.name = font_name
             run._element.rPr.rFonts.set(qn("w:eastAsia"), font_name)
@@ -59,11 +65,15 @@ class MarkdownToDocxConverter:
     def _add_inline(self, paragraph, node) -> None:
         """Ajoute récursivement les noeuds inline à un paragraphe."""
 
+        # Détection du contexte : déterminer si le paragraphe utilise un style de
+        # titre (nom commençant par "heading" ou "titre").
+        is_heading = paragraph.style.name.lower().startswith(("heading", "titre"))
+
         if isinstance(node, NavigableString):
             text = str(node)
             if text:
                 run = paragraph.add_run(text)
-                self._apply_style(run)
+                self._apply_style(run, is_heading=is_heading)
             return
 
         for child in node.children:
@@ -71,16 +81,18 @@ class MarkdownToDocxConverter:
                 text = str(child)
                 if text:
                     run = paragraph.add_run(text)
-                    self._apply_style(run)
+                    self._apply_style(run, is_heading=is_heading)
             elif child.name in {"strong", "b"}:
                 run = paragraph.add_run(child.get_text())
-                self._apply_style(run, {"is_bold": True})
+                self._apply_style(run, {"is_bold": True}, is_heading=is_heading)
             elif child.name in {"em", "i"}:
                 run = paragraph.add_run(child.get_text())
-                self._apply_style(run, {"is_italic": True})
+                self._apply_style(run, {"is_italic": True}, is_heading=is_heading)
             elif child.name == "code":
                 run = paragraph.add_run(child.get_text())
-                self._apply_style(run)
+                # Le style par défaut ne doit pas écraser celui d'un titre.
+                if not is_heading:
+                    self._apply_style(run, is_heading=is_heading)
                 run.font.name = "Consolas"
                 run._element.rPr.rFonts.set(qn("w:eastAsia"), "Consolas")
             elif child.name == "a":
@@ -88,10 +100,13 @@ class MarkdownToDocxConverter:
                 href = child.get("href")
                 if href:
                     run = self._add_hyperlink(paragraph, href, text)
-                    self._apply_style(run)
+                    # Les hyperliens ont leur propre style; éviter de modifier
+                    # celui d'un titre.
+                    if not is_heading:
+                        self._apply_style(run, is_heading=is_heading)
                 else:
                     run = paragraph.add_run(text)
-                    self._apply_style(run)
+                    self._apply_style(run, is_heading=is_heading)
             else:
                 self._add_inline(paragraph, child)
 
