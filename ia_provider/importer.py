@@ -29,9 +29,15 @@ def _convertir_docx_en_markdown(document: docx.Document) -> str:
                 markdown_lines.append("")
                 continue
 
-            style_name = paragraphe.style.name if paragraphe.style else ""
+            style_name = (
+                paragraphe.style.name
+                if getattr(paragraphe, "style", None) and getattr(paragraphe.style, "name", None)
+                else ""
+            )
             style_lower = style_name.lower()
-            style_normalized = style_lower.replace(" ", "").replace("-", "").replace("_", "")
+            style_normalized = (
+                style_lower.replace(" ", "").replace("-", "").replace("_", "")
+            )
 
             contenu = ""
             for run in paragraphe.runs:
@@ -46,18 +52,18 @@ def _convertir_docx_en_markdown(document: docx.Document) -> str:
                     texte = f"*{texte}*"
                 contenu += texte
 
-            heading_handled = False
+            heading_level = None
             for i in range(1, 5):
                 if f"heading{i}" in style_normalized or f"titre{i}" in style_normalized:
-                    markdown_lines.append("#" * i + f" {contenu}")
-                    heading_handled = True
+                    heading_level = i
                     break
 
-            if not heading_handled:
-                if "list bullet" in style_lower:
-                    markdown_lines.append(f"* {contenu}")
-                else:
-                    markdown_lines.append(contenu)
+            if heading_level:
+                markdown_lines.append("#" * heading_level + f" {contenu}")
+            elif "list bullet" in style_lower:
+                markdown_lines.append(f"* {contenu}")
+            else:
+                markdown_lines.append(contenu)
 
             markdown_lines.append("")
 
