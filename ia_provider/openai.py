@@ -25,16 +25,15 @@ except ImportError:
 class OpenAIProvider(OpenAIBatchMixin, BaseProvider):
     """Provider pour le modèle OpenAI gpt-4.1 avec support des batches"""
 
-    def __init__(self, model_name: str, api_key: str, log_full_content: bool = False):
+    def __init__(self, model_name: str, api_key: str):
         """
         Initialise le client OpenAI.
 
         Args:
             model_name: Nom du modèle OpenAI (gpt-4.1, gpt-4.1-mini, gpt-4.1-nano)
             api_key: Clé API OpenAI
-            log_full_content: Active la journalisation détaillée du contenu JSON
         """
-        super().__init__(model_name, api_key, log_full_content=log_full_content)
+        super().__init__(model_name, api_key)
         
         if openai is None:
             raise ImportError("Installez openai: pip install openai")
@@ -99,16 +98,6 @@ class OpenAIProvider(OpenAIBatchMixin, BaseProvider):
         self.logger.info(
             f"Appel API OpenAI (modèle: {self.model_name}) avec params: {params}"
         )
-        if self.log_full_content:
-            try:
-                messages_json = json.dumps(messages, indent=2, ensure_ascii=False)
-                self.logger.debug(
-                    f"Contenu JSON envoyé à l'API:\n{messages_json}"
-                )
-            except Exception:
-                self.logger.debug(
-                    f"Contenu brut (non-JSON) envoyé à l'API: {messages}"
-                )
 
         try:
             response = self.client.chat.completions.create(
@@ -151,16 +140,6 @@ class OpenAIProvider(OpenAIBatchMixin, BaseProvider):
         self.logger.info(
             f"Appel API OpenAI (modèle: {self.model_name}) avec params: {params}"
         )
-        if self.log_full_content:
-            try:
-                messages_json = json.dumps(messages, indent=2, ensure_ascii=False)
-                self.logger.debug(
-                    f"Contenu JSON envoyé à l'API:\n{messages_json}"
-                )
-            except Exception:
-                self.logger.debug(
-                    f"Contenu brut (non-JSON) envoyé à l'API: {messages}"
-                )
 
         try:
             response = self.client.chat.completions.create(

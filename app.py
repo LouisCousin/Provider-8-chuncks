@@ -221,12 +221,6 @@ Votre réponse finale doit contenir **uniquement** le résultat de la mission ut
 with st.sidebar:
     st.title("⚙️ Configuration")
 
-    st.subheader("🛠️ Options de débogage")
-    debug_mode_enabled = st.checkbox(
-        "Activer la journalisation détaillée (JSON)",
-        help="Cochez cette case pour voir le contenu complet des requêtes API dans les logs."
-    )
-    
     # Sélection du modèle
     st.subheader("🤖 Modèle")
     available_models = manager.get_available_models()
@@ -543,7 +537,7 @@ if generate_button:
         try:
             # Obtenir le provider
             provider_instance = manager.get_provider(
-                selected_model, api_key, log_full_content=debug_mode_enabled
+                selected_model, api_key
             )
 
             # Préparer les paramètres selon le modèle

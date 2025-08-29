@@ -104,14 +104,13 @@ class BaseProvider(ABC):
     Définit l'interface commune que tous les providers doivent implémenter.
     """
 
-    def __init__(self, model_name: str, api_key: str, log_full_content: bool = False):
+    def __init__(self, model_name: str, api_key: str):
         """
         Initialise le provider avec le modèle et la clé API.
 
         Args:
             model_name: Nom du modèle à utiliser
             api_key: Clé API pour l'authentification
-            log_full_content: Active la journalisation détaillée du contenu JSON
         """
         if not api_key:
             raise ValueError("La clé API ne peut pas être vide")
@@ -119,7 +118,6 @@ class BaseProvider(ABC):
         self.model_name = model_name
         self.api_key = api_key
         self.logger = logging.getLogger(self.__class__.__name__)
-        self.log_full_content = log_full_content
         self.default_params = load_config()
     
     @abstractmethod
@@ -236,18 +234,17 @@ class ProviderManager:
         
         print(f"Provider {provider_class.__name__} enregistré avec {len(models)} modèle(s)")
     
-    def get_provider(self, model_name: str, api_key: Optional[str] = None, log_full_content: bool = False) -> BaseProvider:
+    def get_provider(self, model_name: str, api_key: Optional[str] = None) -> BaseProvider:
         """
         Retourne une instance du provider approprié pour le modèle.
-        
+
         Args:
             model_name: Nom du modèle à utiliser
             api_key: Clé API (optionnel, sera chargée depuis l'environnement si absente)
-            log_full_content: Active la journalisation détaillée du contenu JSON
-            
+
         Returns:
             BaseProvider: Instance du provider configuré
-            
+
         Raises:
             UnknownModelError: Si le modèle n'est pas reconnu
             ValueError: Si la clé API ne peut pas être trouvée
@@ -271,7 +268,7 @@ class ProviderManager:
                     f"Veuillez la fournir explicitement ou la définir dans .env: {e}"
                 )
         
-        return provider_class(model_name, api_key, log_full_content=log_full_content)
+        return provider_class(model_name, api_key)
     
     def get_available_models(self) -> List[str]:
         """
