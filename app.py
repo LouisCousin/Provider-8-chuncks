@@ -495,8 +495,8 @@ uploaded_file = st.file_uploader(
 
 if uploaded_file is not None:
     if "document_info" not in st.session_state or st.session_state.get("uploaded_filename") != uploaded_file.name:
-        contenu, methode = importer.analyser_document(uploaded_file)
-        st.session_state.document_info = {"contenu": contenu, "methode": methode}
+        chunks, methode = importer.analyser_document(uploaded_file)
+        st.session_state.document_info = {"chunks": chunks, "methode": methode}
         st.session_state.uploaded_filename = uploaded_file.name
         st.session_state.source_template_styles = None
         if uploaded_file.name.lower().endswith(".pdf"):
@@ -516,7 +516,8 @@ user_instruction = st.text_area(
 )
 
 mission_utilisateur = user_instruction
-contenu_document = st.session_state.get("document_info", {}).get("contenu", "")
+chunks_document = st.session_state.get("document_info", {}).get("chunks", [])
+contenu_document = "\n\n".join(chunks_document)
 prompt_text = mission_utilisateur
 prompt = f"{mission_utilisateur}\n\n{contenu_document}" if contenu_document else mission_utilisateur
 
@@ -638,23 +639,27 @@ if generate_button:
             else:
                 try:
                     requests_pour_le_lot: List[BatchRequest] = []
+                    lot_id = f"lot_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
-                    request_body = {
-                        "model": selected_model,
-                        "messages": [{"role": "user", "content": prompt}],
-                        **params,
-                    }
-                    requests_pour_le_lot.append(
-                        BatchRequest(
-                            custom_id=f"req_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-                            body=request_body,
-                            prompt_text=prompt_text,
+                    chunks_a_envoyer = chunks_document or [""]
+                    for idx, chunk in enumerate(chunks_a_envoyer, start=1):
+                        contenu_chunk = f"{mission_utilisateur}\n\n{chunk}" if chunk else mission_utilisateur
+
+                        request_body = {
+                            "model": selected_model,
+                            "messages": [{"role": "user", "content": contenu_chunk}],
+                            **params,
+                        }
+                        requests_pour_le_lot.append(
+                            BatchRequest(
+                                custom_id=f"{lot_id}_chunk_{idx:03d}",
+                                body=request_body,
+                                prompt_text=contenu_chunk,
+                            )
                         )
-                    )
-
 
                     with st.spinner(
-                        f"Soumission du lot de {len(requests_pour_le_lot)} chunk(s) vers {selected_model}..."
+                        f"Soumission du lot de {len(requests_pour_le_lot)} chunk(s) vers {selected_model}...",
                     ):
                         batch_id = provider_instance.submit_batch(
                             requests=requests_pour_le_lot
