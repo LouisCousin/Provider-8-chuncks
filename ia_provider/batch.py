@@ -179,12 +179,6 @@ class OpenAIBatchMixin:
                 "body": prepared_body
             }
             jsonl_lines.append(json.dumps(batch_line))
-        if self.log_full_content:
-            try:
-                pretty = json.dumps([json.loads(l) for l in jsonl_lines], indent=2, ensure_ascii=False)
-                self.logger.debug(f"Contenu JSON du batch envoyé:\n{pretty}")
-            except Exception:
-                self.logger.debug(f"Contenu brut du batch envoyé: {jsonl_lines}")
 
         jsonl_content = "\n".join(jsonl_lines)
         file_obj = io.BytesIO(jsonl_content.encode('utf-8'))
@@ -269,17 +263,7 @@ class AnthropicBatchMixin:
             }
             batch_requests.append(anthropic_request)
 
-        if self.log_full_content:
-            try:
-                pretty = json.dumps(batch_requests, indent=2, ensure_ascii=False)
-                self.logger.debug(
-                    f"Contenu JSON du batch envoyé:\n{pretty}"
-                )
-            except Exception:
-                self.logger.debug(
-                    f"Contenu brut du batch envoyé: {batch_requests}"
-                )
-        
+
         try:
             # Créer le batch via l'API Anthropic
             batch = self.client.beta.messages.batches.create(
