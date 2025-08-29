@@ -185,6 +185,34 @@ MODEL_MAX_TOKENS = {
     "claude-sonnet-4-20250514": 64000,
 }
 
+PROMPT_STANDARD = """<contexte_document>
+Le document qui sera fourni à la fin de ce prompt est déjà structuré en format Markdown. Les titres sont indiqués par des symboles '#' et les listes par des '*'.
+</contexte_document>
+<regle_fondamentale>
+Vous devez impérativement préserver **à l'identique** toute la syntaxe Markdown existante dans votre réponse finale. Ne supprimez ou ne modifiez aucun de ces codes de formatage.
+</regle_fondamentale>
+<mission_utilisateur>
+--- VEUILLEZ DÉCRIRE VOTRE MISSION PRÉCISE ICI ---
+(Par exemple : Traduis le document suivant en espagnol professionnel.)
+</mission_utilisateur>"""
+
+PROMPT_SECOURS = """<contexte_document>
+Le document qui sera fourni à la fin de ce prompt est un **texte brut non formaté**. Votre première tâche est d'en déduire la structure.
+</contexte_document>
+<workflow_obligatoire>
+Vous devez suivre ces 3 étapes dans l'ordre :
+1.  **ANALYSE STRUCTURELLE :** Lisez l'intégralité du texte brut. Identifiez sa structure logique en vous basant sur le contexte, les majuscules, les sauts de ligne et la sémantique pour repérer les titres principaux, les sous-titres, les listes, etc.
+2.  **FORMATAGE MARKDOWN :** Réécrivez l'intégralité du document en utilisant la syntaxe Markdown pour matérialiser la structure que vous avez déduite.
+3.  **EXÉCUTION DE LA MISSION :** Appliquez la mission décrite par l'utilisateur (voir ci-dessous) sur le contenu que vous venez de mettre en forme.
+</workflow_obligatoire>
+<regle_fondamentale>
+Votre réponse finale doit contenir **uniquement** le résultat de la mission utilisateur, parfaitement formaté en Markdown. N'ajoutez aucun commentaire ou explication.
+</regle_fondamentale>
+<mission_utilisateur>
+--- VEUILLEZ DÉCRIRE VOTRE MISSION PRÉCISE ICI ---
+(Par exemple : Résume les points clés de ce document en une liste à puces.)
+</mission_utilisateur>"""
+
 
 # =============================================================================
 # Interface Sidebar
@@ -458,34 +486,39 @@ if st.session_state.conversation_mode and st.session_state.messages:
 # Zone de saisie
 st.subheader("Instruction et contexte")
 
-user_instruction = st.text_area(
-    "Votre instruction :",
-    height=100,
-    placeholder="Ex: Résume ce document en 5 points clés.",
-)
+if "user_prompt" not in st.session_state:
+    st.session_state.user_prompt = ""
+
 uploaded_file = st.file_uploader(
     "Ajouter un document comme contexte (optionnel)", type=["docx", "pdf"]
 )
 
-prompt_final = user_instruction
-prompt_text = user_instruction
-
 if uploaded_file is not None:
-    contenu_markdown, _ = importer.analyser_document(uploaded_file)
-    st.session_state.source_template_styles = None
-    if uploaded_file.name.lower().endswith(".pdf"):
-        st.warning("⚠️ L'analyse de style n'est pas supportée pour les PDF.")
-
-    prompt_final = (
-        "INSTRUCTION : Tu es un assistant expert en traduction. Tu dois traduire le texte suivant qui est au format Markdown.\n"
-        f"TÂCHE DE TRADUCTION : \"{user_instruction}\"\n"
-        "RÈGLE ABSOLUE : Ta réponse finale ne doit contenir QUE le texte traduit, en conservant impérativement la syntaxe Markdown d'origine (titres, listes, gras, etc.).\n\n"
-        f"TEXTE MARKDOWN À TRAITER :\n{contenu_markdown}"
-    )
+    if "document_info" not in st.session_state or st.session_state.get("uploaded_filename") != uploaded_file.name:
+        contenu, methode = importer.analyser_document(uploaded_file)
+        st.session_state.document_info = {"contenu": contenu, "methode": methode}
+        st.session_state.uploaded_filename = uploaded_file.name
+        st.session_state.source_template_styles = None
+        if uploaded_file.name.lower().endswith(".pdf"):
+            st.warning("⚠️ L'analyse de style n'est pas supportée pour les PDF.")
+        if methode == "STYLE":
+            st.session_state.user_prompt = PROMPT_STANDARD
+        else:
+            st.session_state.user_prompt = PROMPT_SECOURS
 else:
     st.session_state.source_template_styles = None
 
-prompt = prompt_final
+user_instruction = st.text_area(
+    "Votre instruction :",
+    height=300,
+    placeholder="Ex: Résume ce document en 5 points clés.",
+    key="user_prompt",
+)
+
+mission_utilisateur = user_instruction
+contenu_document = st.session_state.get("document_info", {}).get("contenu", "")
+prompt_text = mission_utilisateur
+prompt = f"{mission_utilisateur}\n\n{contenu_document}" if contenu_document else mission_utilisateur
 
 col1, col2, col3 = st.columns([1, 1, 2])
 
