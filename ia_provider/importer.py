@@ -17,6 +17,16 @@ logging.basicConfig(
 )
 
 
+def styles_contains_heading(document: docx.Document) -> bool:
+    """Vérifie si au moins un paragraphe utilise un style de titre."""
+
+    for para in document.paragraphs:
+        style_name = para.style.name.lower()
+        if "heading" in style_name or "titre" in style_name:
+            return True
+    return False
+
+
 def _convertir_docx_en_markdown(document: docx.Document) -> str:
     """Convertit un ``Document`` DOCX en texte Markdown."""
 
@@ -109,36 +119,41 @@ def _convertir_docx_en_markdown(document: docx.Document) -> str:
     return "\n".join(markdown_lines).strip()
 
 
-def analyser_docx(file_stream) -> Tuple[str, None]:
-    """Analyse un fichier DOCX et retourne son contenu Markdown."""
+def analyser_docx(file_stream) -> Tuple[str, str]:
+    """Analyse un fichier DOCX et retourne son contenu et la méthode utilisée."""
 
     try:
         file_stream.seek(0)
         document = docx.Document(file_stream)
-        markdown_content = _convertir_docx_en_markdown(document)
-        return markdown_content, None
+
+        if styles_contains_heading(document):
+            markdown_content = _convertir_docx_en_markdown(document)
+            return markdown_content, "STYLE"
+
+        plain_text = "\n".join(para.text for para in document.paragraphs)
+        return plain_text, "IA"
     except OpcError as e:
         logging.error(f"Fichier DOCX corrompu : {e}")
-        return "", None
+        return "", "IA"
     except Exception as e:  # pragma: no cover - erreurs inattendues
         logging.error(f"Erreur inattendue sur DOCX : {e}", exc_info=True)
-        return "", None
+        return "", "IA"
 
 
-def analyser_pdf(file_stream) -> Tuple[str, None]:
+def analyser_pdf(file_stream) -> Tuple[str, str]:
     """Extrait le contenu textuel brut d'un PDF."""
 
     try:
         file_stream.seek(0)
         with fitz.open(stream=file_stream.read(), filetype="pdf") as doc:
             full_text = "".join(page.get_text() for page in doc)
-        return full_text, None
+        return full_text, "IA"
     except Exception as e:  # pragma: no cover - erreurs inattendues
         logging.error(f"Erreur inattendue sur PDF : {e}", exc_info=True)
-        return "", None
+        return "", "IA"
 
 
-def analyser_document(fichier) -> Tuple[str, None]:
+def analyser_document(fichier) -> Tuple[str, str]:
     """Analyse un fichier importé et choisit la méthode appropriée."""
 
     filename = fichier.name.lower()
@@ -146,5 +161,5 @@ def analyser_document(fichier) -> Tuple[str, None]:
         return analyser_docx(fichier)
     if filename.endswith(".pdf"):
         return analyser_pdf(fichier)
-    return "", None
+    return "", "STYLE"
 
